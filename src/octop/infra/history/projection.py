@@ -242,6 +242,11 @@ class TurnHistoryTracker:
 
     def _merge_streamed(self, items: list[ThreadMessageInput]) -> None:
         matched: set[int] = set()
+        # Preserve the legacy single-answer case when state completes a truncated
+        # stream. Across multiple answers, a prefix is not evidence of identity.
+        single_answer = (
+            len(self._streamed) == 1 and sum(item.role in _ASSISTANT_ROLES for item in items) == 1
+        )
         for part in self._streamed:
             if not part.text and not part.reasoning:
                 continue
@@ -255,9 +260,9 @@ class TurnHistoryTracker:
                         item.message_id == part.message_id
                         if part.message_id
                         else bool(part.text)
-                        and bool(_wire_text(item))
                         and (
-                            part.text in _wire_text(item) or part.text.startswith(_wire_text(item))
+                            part.text == _wire_text(item)
+                            or (single_answer and _wire_text(item).startswith(part.text))
                         )
                     )
                 ),

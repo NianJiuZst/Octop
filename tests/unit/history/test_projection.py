@@ -332,3 +332,39 @@ def test_turn_tracker_splits_unidentified_sources():
     tracker.observe({"type": "token", "node": "first", "content": "first answer"})
     tracker.observe({"type": "token", "node": "second", "content": "second answer"})
     assert [_wire_text(item) for item in tracker.inputs] == ["first answer", "second answer"]
+
+
+@pytest.mark.parametrize(
+    ("streamed", "saved"),
+    [("answer", "other answer"), ("answer", "answer extended"), ("answer extended", "answer")],
+)
+def test_turn_tracker_does_not_match_unidentified_partial_text(streamed, saved):
+    from langchain_core.messages import AIMessage
+
+    tracker = TurnHistoryTracker()
+    tracker.observe({"type": "token", "content": streamed})
+    tracker.observe({"type": "reasoning", "content": "unidentified thought"})
+    tracker.observe(
+        {
+            "type": "state_update",
+            "data": {"messages": [AIMessage(content=saved), AIMessage(content="another reply")]},
+        }
+    )
+
+    assert [_wire_text(item) for item in tracker.inputs] == [saved, "another reply", streamed]
+    data = [json.loads(item.message_json)["data"] for item in tracker.inputs]
+    assert "reasoning_content" not in data[0]["additional_kwargs"]
+    assert "reasoning_content" not in data[1]["additional_kwargs"]
+    assert data[2]["additional_kwargs"]["reasoning_content"] == "unidentified thought"
+
+
+@pytest.mark.parametrize(
+    ("streamed", "saved"), [("answer", "other answer"), ("answer extended", "answer")]
+)
+def test_turn_tracker_does_not_rewrite_unidentified_single_answer(streamed, saved):
+    from langchain_core.messages import AIMessage
+
+    tracker = TurnHistoryTracker()
+    tracker.observe({"type": "token", "content": streamed})
+    tracker.observe({"type": "state_update", "data": {"messages": [AIMessage(content=saved)]}})
+    assert [_wire_text(item) for item in tracker.inputs] == [saved, streamed]
